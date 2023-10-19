@@ -121,20 +121,43 @@ def get_tlf(url):
         phone_numbers_in_html += re.findall(r'\+\(\d{2,3}\)\s*\d{3}\s*\d{3}\s*\d{3}', visible_text)
         # Agrega la nueva expresión regular para buscar números con el formato "+33 (0)7 80 98 92 23"
         phone_numbers_in_html += re.findall(r'\+\d{2,3}\s*\(\d\)\s*\d{1,2}[\s\d]*', visible_text)
+        # Agrega la nueva expresión regular para buscar números con el formato "657 123 123
+        phone_numbers_in_html += re.findall(r'\+\s*\d{3}\s*\d{3}\s*\d{3}', visible_text)
         # Agrega la nueva expresión regular para buscar números con el formato "(+34) 946.855.710"
         phone_numbers_in_html += re.findall(r'\(\+\d{2,3}\)\s*\d{3}.\d{3}.\d{3}', visible_text)
         # Agrega la nueva expresión regular para buscar números con el formato +(34) 636957494
         phone_numbers_in_html += re.findall(r'\+\(\d{2,3}\)\s*\d{9}', visible_text)
         # Agrega la nueva expresión regular para buscar números con el formato href:tel943042213
         phone_numbers_in_html += re.findall(r'tel:(\d{9})', str(bsObject))
-
+        # Agrega la nueva expresión regular para buscar números con el formato +34 943 84 84 51
+        phone_numbers_in_html += re.findall(r'\+\d{2,3}\s\d{3}(?:\s\d{2}){2,3}', visible_text)
         # Elimina los caracteres no deseados y almacena los números de teléfono en el formato deseado
         formatted_phone_numbers = [re.sub(r'[^\d+]', '', phone_number) for phone_number in phone_numbers_in_html]
 
         for phone_number in formatted_phone_numbers:
             if phone_number not in [phone for (_, phone) in phone_numbers_with_text]:
                 phone_numbers_with_text.append(('', phone_number))
-
+        #Encortra el número de teléfono con el formato deseado, dentro de etiqueta <p> / <p>
+        p_elements = bsObject.find_all('p')
+        for p in p_elements:
+            #+34 648 764 342
+            phone_number = re.search(r'\+\d{2,3}\s\d{3}(?:\s\d{2}){2,3}', p.text)
+            phone_number = re.search(r'\s\d{3}(?:\s\d{2}){2,3}', p.text)
+            if phone_number:
+                phone_numbers_with_text.append(('', phone_number.group()))
+        #Encontrar el número de teléfono con el formato deseado, dentro de etiqueta <span> / <span>
+        span_elements = bsObject.find_all('span')
+        for span in span_elements:
+            #+34 648 764 342
+            phone_number = re.search(r'\+\d{2,3}\s\d{3}\s\d{3}\s\d{3}', span.text)
+            #642 20 21 21
+            phone_number = re.search(r'\b\d{3} \d{2} \d{2} \d{2}\b', span.text)
+            
+            if phone_number:
+                phone_numbers_with_text.append(('', phone_number.group()))
+         
+            if phone_number:
+                phone_numbers_with_text.append(('', phone_number.group()))
     except AttributeError as e:
         return None
 

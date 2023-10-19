@@ -151,7 +151,6 @@ def get_email(url):
         return None
 
 #funcion obtiene los tlf de la pagina web
-# Función para obtener números de teléfono de la página web
 
 def get_tlf(url):
     try:
@@ -182,70 +181,120 @@ def get_tlf(url):
         phone_numbers_in_html += re.findall(r'\+\(\d{2,3}\)\s*\d{3}\s*\d{3}\s*\d{3}', visible_text)
         # Agrega la nueva expresión regular para buscar números con el formato "+33 (0)7 80 98 92 23"
         phone_numbers_in_html += re.findall(r'\+\d{2,3}\s*\(\d\)\s*\d{1,2}[\s\d]*', visible_text)
+        # Agrega la nueva expresión regular para buscar números con el formato "657 123 123
+        phone_numbers_in_html += re.findall(r'\+\s*\d{3}\s*\d{3}\s*\d{3}', visible_text)
         # Agrega la nueva expresión regular para buscar números con el formato "(+34) 946.855.710"
         phone_numbers_in_html += re.findall(r'\(\+\d{2,3}\)\s*\d{3}.\d{3}.\d{3}', visible_text)
         # Agrega la nueva expresión regular para buscar números con el formato +(34) 636957494
         phone_numbers_in_html += re.findall(r'\+\(\d{2,3}\)\s*\d{9}', visible_text)
         # Agrega la nueva expresión regular para buscar números con el formato href:tel943042213
         phone_numbers_in_html += re.findall(r'tel:(\d{9})', str(bsObject))
-
+        # Agrega la nueva expresión regular para buscar números con el formato +34 943 84 84 51
+        phone_numbers_in_html += re.findall(r'\+\d{2,3}\s\d{3}(?:\s\d{2}){2,3}', visible_text)
         # Elimina los caracteres no deseados y almacena los números de teléfono en el formato deseado
         formatted_phone_numbers = [re.sub(r'[^\d+]', '', phone_number) for phone_number in phone_numbers_in_html]
 
         for phone_number in formatted_phone_numbers:
             if phone_number not in [phone for (_, phone) in phone_numbers_with_text]:
                 phone_numbers_with_text.append(('', phone_number))
-
+        #Encortra el número de teléfono con el formato deseado, dentro de etiqueta <p> / <p>
+        p_elements = bsObject.find_all('p')
+        for p in p_elements:
+            #+34 648 764 342
+            phone_number = re.search(r'\+\d{2,3}\s\d{3}(?:\s\d{2}){2,3}', p.text)
+            phone_number = re.search(r'\+\d{2} \d{2} \d{3} \d{2} \d{2}', p.text)
+            #+(34)945 34 34 43
+            phone_number = re.search(r'\+\(\d{2,3}\)\s*\d{3}\s*\d{2}\s*\d{2}', p.text)
+            #+xx xxx xxx xxx
+            #xxx xx xx xx
+            #xxx xx xx xx sin +
+            phone_number = re.search(r'\+\d{2,3}\s\d{3}(?:\s\d{2}){2,3}|\b\d{3} \d{2} \d{2} \d{2}\b|\b\d{3} \d{2} \d{2} \d{2}\b', p.text)
+            if phone_number:
+                phone_numbers_with_text.append(('', phone_number.group()))
+        #Encontrar el número de teléfono con el formato deseado, dentro de etiqueta <span> / <span>
+        span_elements = bsObject.find_all('span')
+        for span in span_elements:
+            #+34 648 764 342
+            phone_number = re.search(r'\+\d{2,3}\s\d{3}\s\d{3}\s\d{3}', span.text)
+            #642 20 21 21
+            phone_number = re.search(r'\b\d{3} \d{2} \d{2} \d{2}\b', span.text)
+            phone_number = re.search(r'\+\d{2,3}\s\d{3}(?:\s\d{2}){2,3}|\b\d{3} \d{2} \d{2} \d{2}\b|\b\d{3} \d{2} \d{2} \d{2}\b', span.text)
+            
+            if phone_number:
+                phone_numbers_with_text.append(('', phone_number.group()))
+        
     except AttributeError as e:
         return None
 
     return phone_numbers_with_text
 
-
-contact_link = get_contact_link(link)
-
-idiomas = get_idiomas(link)
-if idiomas == None:
-     idiomas = get_idiomas(contact_link)
-     if idiomas == None:
+#Obtiene el link del contacto de la pagina web por si no esta toda esa informacion en la pagina de inicio
+try:
+    contact_link = get_contact_link(link)
+    #llamada para imprimir los idiomas que tenemos en la pagina web
+    idiomas = get_idiomas(link)
+    if idiomas == None:
         print('No se encontraron idiomas en la página web.')
-     else:
+    else:
         print(f'idiomas: {idiomas}')
-else:
-     print(f'idiomas: {idiomas}')
 
+    #llamada para imprimir los correos de la pagina web, del inicio o de la pagina de contacto
+    email = get_email(link)
+    if email == None:
+        if contact_link == None:
+            print('No se encontró una dirección de correo electrónico en la página web.')
+        else :
+            #por si el url no es completo, se agrega el dominio a la url para obtener el correo de la pagina de contacto
+            if not contact_link.startswith('http'):
+                base_url = urlparse(link)
+                complete_contact_link = f"{base_url.scheme}://{base_url.netloc}{contact_link}"
+                email = get_email(complete_contact_link)
+            else:
+                #url completa antes, no hace falta agragar nada
+                email = get_email(contact_link)
+            if email == None:
+                print('No se encontró una dirección de correo electrónico en la página web.')
+            else:
+                print(f'Dirección de correo electrónico: {email}')
+    else:
+        print(f'Dirección de correo electrónico: {email}')
 
-email = get_email(link)
-if email == None:
-     email = get_email(contact_link)
-     if email == None:
-         print('No se encontró una dirección de correo electrónico en la página web.')
-     else:
-          print(f'Dirección de correo electrónico: {email}')
-else:
-     print(f'Dirección de correo electrónico: {email}')
+    # Llama a la función y obtén la lista de números de teléfono y su texto precedente del inicio o de la página de contacto
 
-# Llama a la función y obtén la lista de números de teléfono y su texto precedente
-phone_numbers_and_text = get_tlf(link)
-# Imprime los números de teléfono y su texto precedente
-if phone_numbers_and_text:
-    for item in phone_numbers_and_text:
-        text, phone_number = item
-        
-        print(f' {text} ')
-        print(f'Número de teléfono: {phone_number}')
-    if phone_number == None:
-        phone_numbers_and_text = get_tlf(contact_link)
-        if phone_numbers_and_text == None:
-            print('No se encontraron números de teléfono en la página web.')
-        else:
-            for item in phone_numbers_and_text:
-                text, phone_number = item
+    phone_numbers_and_text = get_tlf(link)
+    # Imprime los números de teléfono y su texto precedente
+    if phone_numbers_and_text:
+        for item in phone_numbers_and_text:
+            text, phone_number = item
+            
+            print(f' {text} ')
+            print(f'Número de teléfono: {phone_number}')
+        if phone_number == None:
+            if contact_link == None:
+                print('No se encontraron números de teléfono en la página web.')
+            else:
+                #por si el url no es completo, se agrega el dominio a la url para obtener el correo de la pagina de contacto
+                if not contact_link.startswith('http'):
+                    base_url = urlparse(link)
+                    complete_contact_link = f"{base_url.scheme}://{base_url.netloc}{contact_link}"
+                    phone_number_and_text = get_tlf(complete_contact_link)
+                    
+                else:
+                    #url completa antes, no hace falta agragar nada
+                    phone_number_and_text = get_tlf(contact_link)
+                if phone_numbers_and_text == None:
+                    print('No se encontraron números de teléfono en la página web.')
+                else:
+                    for item in phone_numbers_and_text:
+                        text, phone_number = item
 
-                print(f' {text} ')
-                print(f'Número de teléfono: {phone_number}')
-else:
-    print('No se encontraron números de teléfono en la página web.')
+                        print(f' {text} ')
+                        print(f'Número de teléfono: {phone_number}')
+    else:
+        print('No se encontraron números de teléfono en la página web.')
+
+except (HTTPError) as e:
+    print(f'Error no hay pagina de contacto: {e}')
 
 
     
