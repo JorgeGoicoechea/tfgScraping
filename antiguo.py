@@ -2,20 +2,12 @@ from bs4 import BeautifulSoup
 import requests
 import json
 import datetime
-from urllib.request import urlopen, Request
+from urllib.request import urlopen
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlparse, parse_qs
 from langdetect import detect
 
 import re
-
-#arreglar problema cretificate verify failed
-import ssl
-ssl._create_default_https_context = ssl._create_unverified_context
-#arreglar problema unsafe_legacy_renegotiation_disabled.
-#hemos creado archivo openssl.cnf
-#llamada terminal con el scraper OPENSSL_CONF=/home/jorge/tfg/openssl.cnf python pruebastack.py
-
 
 
 headers = {
@@ -37,8 +29,6 @@ soup = BeautifulSoup(html, 'lxml')
 # Encuentra todos los contenedores de resultados de búsqueda
 containers = soup.findAll('div', class_='yuRUbf')
 div_summary = soup.find('div', class_='VwiC3b yXK7lf lyLwlc yDYNvb W8l4ac lEBKkf')
-if div_summary is None:
-     div_summary = soup.find('div', class_='VwiC3b yXK7lf lyLwlc yDYNvb W8l4ac')
 date_today = datetime.datetime.now().strftime("%d-%m-%Y")
 
 #recorrer el contendor de la primera pagina que aparece en el buscador
@@ -47,19 +37,14 @@ for container in containers:
     h3 = container.find('h3', class_='LC20lb MBeuO DKV0Md')
     if h3:
           heading = h3.text
-          
     link = None  
     a = container.find('a')
     if a:
           link = a['href']
-
     article_summary = None
-    if div_summary is not None:
-        if div_summary.find('span') is not None:
-             article_summary = div_summary.find('span').text
-        else:
-             article_summary = div_summary.text
-
+    div_summary = div_summary.find('span') 
+    if div_summary:
+          article_summary = div_summary.text
     icon = None
     img = container.find('img', class_='XNo5Ab')
     if img:
@@ -81,41 +66,26 @@ if not heading or not link:
 #funcion para obtener el link de la pagina de los contactos de la empresa haciendo un crawling para obtener datos de contacto
 def get_contact_link(url):
     try:
-        #arreglar error 406
-        req = Request(url, headers=headers)
-        html = urlopen(req)
+        html = urlopen(url)
     except (HTTPError, URLError) as e:
         print(f'Error en get_contact_link: {e}')
         return None
     try:
         bsObject = BeautifulSoup(html, 'html.parser')
         # Encuentra el primer enlace que contiene la palabra "contacto" en su URL
-        contact_link = bsObject.find('a', href=re.compile(r'contact'))
-        # Verifica si se encontró un enlace
-        if contact_link:
-            href_value = contact_link.get('href')  # Obtiene el valor del atributo href
-            print(f'Contact link: {href_value}')
+        contact_link = bsObject.find('a', href=re.compile(r'contact', re.I))
 
-        # Encuentra el elemento <a>, llamada recorrer todo 
-        else:
-            all_links = bsObject.find_all('a')
-            for link in all_links:
-                href = link.get('href')
-                if href and '/contact/' in href:
-                    href_value = contact_link.get('href')  # Obtiene el valor del atributo href
-                    print(f'Contact link: {href_value}')
-                    break  # Detenerse después de encontrar el primer enlace de contacto
-        return href_value
-    except Exception as e:
-        print(f'Error al buscar el enlace de contacto: {e}')
+        if contact_link:
+            return contact_link['href']
+
         return None
-    
+    except AttributeError as e:
+        return None
 
 #funcion obtiene los idiomas de la pagina web
 def get_idiomas(url):
     try:
-        req = Request(url, headers=headers)
-        html = urlopen(req)
+         html = urlopen(url)
     except (HTTPError,URLError) as e:
          print(f'Error en get_idiomas: {e}')
          return None
@@ -123,8 +93,6 @@ def get_idiomas(url):
          bsObject = BeautifulSoup(html, 'html.parser')
          # Busca todas las etiquetas 'link' con atributo 'hreflang', justo son las de los idiomas de todas las paginas
          hreflang_tags = bsObject.find_all('link', {'rel': 'alternate', 'hreflang': re.compile('.*', re.I)})
-         # Busca etiquetas <a> que contienen el atributo 'lang' para el idioma
-         a_lang_tags = bsObject.find_all('a', {'lang': re.compile('.*', re.I)})
 
     except AttributeError as e:
          return None
@@ -135,12 +103,6 @@ def get_idiomas(url):
             hreflang_value = tag['hreflang']
             if len(hreflang_value) <= 4:
                 idiomas.append(hreflang_value)
-    if a_lang_tags:
-        # Itera sobre las etiquetas <a> y obtén los valores del atributo 'lang'
-        for tag in a_lang_tags:
-            lang_value = tag.get('lang')
-            if lang_value:
-                idiomas.append(lang_value)
     if not idiomas:
             # Si no se encuentran idiomas en los enlaces, intenta buscar en el atributo 'lang' de la etiqueta 'html'
             html_tag = bsObject.find('html')
@@ -163,24 +125,21 @@ def get_idiomas(url):
 #funcion obtiene los emails de la pagina web
 def get_email(url):
     try:
-        req = Request(url, headers=headers)
-        html = urlopen(req)
+        html = urlopen(url)
     except (HTTPError, URLError) as e:
         print(f'Error en get_email: {e}')
         return None
     try:
         bsObj = BeautifulSoup(html, 'html.parser')
         # Utiliza expresión regular para obtener correos de enlaces 'mailto:'
-        email_links = bsObj.find_all('a', href=re.compile(r'^mailto:([A-Za-z0-9\._+]+@[A-Za-z-z0-9]+\.[A-Za-z]{1,4}$)', re.I))
-        
-
+        email_links = bsObj.find_all('a', href=re.compile(r'^mailto:([A-Za-z0-9\._+]+@[A-Za-z-z0-9]+\.[A-Za-z])'))
         
         # Si se encuentran correos electrónicos en enlaces 'mailto:', devuelve el primero
         if email_links:
             return email_links[0]['href'].replace('mailto:', '')
         
         # Si no se encuentran correos en enlaces 'mailto:', busca correos escritos en el contenido HTML
-        email_in_text = re.findall(r'\b[\w\.-]+@[\w\.-]+\.\w{1,4}\b', bsObj.get_text())
+        email_in_text = re.findall(r'[\w\.-]+@[\w\.-]+', bsObj.get_text())
         
         # Si se encuentran correos en el texto, devuelve el primero
         if email_in_text:
@@ -195,8 +154,7 @@ def get_email(url):
 
 def get_tlf(url):
     try:
-        req = Request(url, headers=headers)
-        html = urlopen(req)
+        html = urlopen(url)
     except (HTTPError, URLError) as e:
         print(f'Error en get_tlf: {e}')
         return None
@@ -275,41 +233,29 @@ try:
     contact_link = get_contact_link(link)
     #llamada para imprimir los idiomas que tenemos en la pagina web
     idiomas = get_idiomas(link)
-    if idiomas is None:
+    if idiomas == None:
         print('No se encontraron idiomas en la página web.')
     else:
         print(f'idiomas: {idiomas}')
 
     #llamada para imprimir los correos de la pagina web, del inicio o de la pagina de contacto
     email = get_email(link)
-    #si email es NoNe miramos contacto_link para llamar a la funcion para obtener el correo de la pagina de contacto
-    if email is None:
-        #mirar contact link es None
-        if contact_link is None:
+    if email == None:
+        if contact_link == None:
             print('No se encontró una dirección de correo electrónico en la página web.')
-            #si contact link no es None, llamamos a la funcion para obtener el correo de la pagina de contacto
-        else:
-            if contact_link is not None:
-                #por si el url no es completo, se agrega el dominio a la url para obtener el correo de la pagina de contacto
-                if not contact_link.startswith('http'):
-                    #nos falta una /porque no se agrega el dominio a la url asi que la añadimos
-                    if not contact_link.startswith('/'):
-                        base_url = urlparse(link)
-                        complete_contact_link = f"{base_url.scheme}://{base_url.netloc}/{contact_link}"
-                        email = get_email(complete_contact_link)
-                    else:
-                        #hay / de por si
-                        base_url = urlparse(link)
-                        complete_contact_link = f"{base_url.scheme}://{base_url.netloc}{contact_link}"
-                        email = get_email(complete_contact_link)
-                #la url es completa asi que llamamos directamente a la funcion para obtener el correo de la pagina de contacto
-                else:
-                    email = get_email(contact_link)
-                #como el correo es None, imprimimos que no se encontró un correo en la pagina web o devolvemos el correo si no
-                if email is None:
-                    print('No se encontró una dirección de correo electrónico en la página web.')
-                else:
-                    print(f'Dirección de correo electrónico: {email}')
+        else :
+            #por si el url no es completo, se agrega el dominio a la url para obtener el correo de la pagina de contacto
+            if not contact_link.startswith('http'):
+                base_url = urlparse(link)
+                complete_contact_link = f"{base_url.scheme}://{base_url.netloc}{contact_link}"
+                email = get_email(complete_contact_link)
+            else:
+                #url completa antes, no hace falta agragar nada
+                email = get_email(contact_link)
+            if email == None:
+                print('No se encontró una dirección de correo electrónico en la página web.')
+            else:
+                print(f'Dirección de correo electrónico: {email}')
     else:
         print(f'Dirección de correo electrónico: {email}')
 
@@ -323,21 +269,18 @@ try:
             
             print(f' {text} ')
             print(f'Número de teléfono: {phone_number}')
-        if phone_number is None:
-            if contact_link is None:
+        if phone_number == None:
+            if contact_link == None:
                 print('No se encontraron números de teléfono en la página web.')
             else:
                 #por si el url no es completo, se agrega el dominio a la url para obtener el correo de la pagina de contacto
                 if not contact_link.startswith('http'):
-                    if not contact_link.startswith('/'):
-                        base_url = urlparse(link)
-                        complete_contact_link = f"{base_url.scheme}://{base_url.netloc}/{contact_link}"
-                        phone_number_and_text = get_tlf(complete_contact_link)
-                    else:
-                        base_url = urlparse(link)
-                        complete_contact_link = f"{base_url.scheme}://{base_url.netloc}{contact_link}"
-                        phone_number_and_text = get_tlf(complete_contact_link)
+                    base_url = urlparse(link)
+                    complete_contact_link = f"{base_url.scheme}://{base_url.netloc}{contact_link}"
+                    phone_number_and_text = get_tlf(complete_contact_link)
+                    
                 else:
+                    #url completa antes, no hace falta agragar nada
                     phone_number_and_text = get_tlf(contact_link)
                 if phone_numbers_and_text == None:
                     print('No se encontraron números de teléfono en la página web.')
@@ -351,7 +294,7 @@ try:
         print('No se encontraron números de teléfono en la página web.')
 
 except (HTTPError) as e:
-    print(f'problema pagina de contacto: {e}')
+    print(f'Error no hay pagina de contacto: {e}')
 
 
     
