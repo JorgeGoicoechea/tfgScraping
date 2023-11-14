@@ -59,6 +59,9 @@ for container in containers:
     if div_summary is not None:
         if div_summary.find('span') is not None:
              article_summary = div_summary.find('span').text
+             #cuando lo que detecta es la fecha antes del div, la quitamos para obtener el texto restante
+             if len(article_summary) < 20:
+                article_summary = div_summary.get_text().split('—', 1)[-1].strip()
         else:
              article_summary = div_summary.text
              #cuando lo que detecta es la fecha antes del div, la quitamos para obtener el texto restante
@@ -86,7 +89,10 @@ if not heading or not link:
 #funcion para obtener el link de la pagina de los contactos de la empresa haciendo un crawling para obtener datos de contacto
 def get_contact_link(url):
     try:
+        #antes llamada con urllib no request
         #arreglar error 406
+        #arreglar error 403
+
         req = Request(url, headers=headers)
         html = urlopen(req)
     except (HTTPError, URLError) as e:
@@ -120,6 +126,9 @@ def get_contact_link(url):
 #funcion obtiene los idiomas de la pagina web
 def get_idiomas(url):
     try:
+        #antes llamada con urllib no request
+        #arreglar error 406
+        #arreglar error 403
         req = Request(url, headers=headers)
         html = urlopen(req)
     except (HTTPError,URLError) as e:
@@ -163,6 +172,59 @@ def get_idiomas(url):
                      detected_lang = detect(bsObject.get_text())
                      idiomas.append(detected_lang)
     return idiomas
+
+def get_social_media(url):
+    try:
+        req = Request(url, headers=headers)
+        html = urlopen(req)
+    except (HTTPError, URLError) as e:
+        print(f'Error en get_social_media: {e}')
+        return None
+
+    bsObject = BeautifulSoup(html, 'html.parser')
+
+    # Encuentra la etiqueta <a> con enlaces de LinkedIn (insensible a mayúsculas y minúsculas)
+    linkedin_tag = bsObject.find('a', href=re.compile(r'linkedin', re.I))
+    linkedin_url = linkedin_tag['href'] if linkedin_tag else None
+    if linkedin_tag:
+        linkedin_url = linkedin_tag['href']
+    else:
+        # Si no se encuentra dentro de <a>, verifica el atributo href del elemento <a>
+        all_links = bsObject.find_all('a')
+        for link in all_links:
+            href = link.get('href')
+            if href and 'linkedin.com' in href:
+                linkedin_url = href
+                break
+        else:
+            linkedin_url = None
+    #crear url ala pagina de linkedin con el nombre de la empresa, cuando hay espacion entre palabras poner -
+    if linkedin_url == None:
+        linkedin_url = 'https://www.linkedin.com/company/' + empresa.replace(' ', '-')
+        #respuesta 999 todavia no tengo permisos para entrar a la pagina de linkedin
+        response = requests.get(linkedin_url)
+        print("respuesta" , response.status_code)
+        if response.status_code == 404:
+            linkedin_url = None
+
+    # Encuentra la etiqueta <a> con enlaces de Twitter (insensible a mayúsculas y minúsculas)
+    twitter_tag = bsObject.find('a', href=re.compile(r'twitter', re.I))
+    # twitter_url = twitter_tag['href'] if twitter_tag 
+    if twitter_tag :
+        twitter_url = twitter_tag['href']
+    else:
+        # Si no se encuentra dentro de <a>, verifica el atributo href del elemento <a>
+        all_links = bsObject.find_all('a')
+        for link in all_links:
+            href = link.get('href')
+            if href and 'twitter.com' in href:
+                twitter_url = href
+                break
+        else:
+            twitter_url = None
+    return linkedin_url, twitter_url
+
+
 #devuelve el correo que esta protegido por cifrado de cloudfare google
 def deCFEmail(fp):
     try:
@@ -175,6 +237,9 @@ def deCFEmail(fp):
 #funcion obtiene los emails de la pagina web
 def get_email(url):
     try:
+        #antes llamada con urllib no request
+        #arreglar error 406
+        #arreglar error 403
         req = Request(url, headers=headers)
         html = urlopen(req)
     except (HTTPError, URLError) as e:
@@ -204,7 +269,7 @@ def get_email(url):
         if fp:
             email_in_text = deCFEmail(fp)
             return email_in_text
-           # Convertir el HTML completo en una cadena de texto
+        # Convertir el HTML completo en una cadena de texto
         # html_text = str(bsObj)
         # # Crear una expresión regular que coincida con correos electrónicos
         # email_pattern = re.compile(r'\b[\w\.-]+@[\w\.-]+\.\w{2,3}\b')
@@ -216,92 +281,96 @@ def get_email(url):
         return None
     except AttributeError as e:
         return None
-
-#funcion normalizar telefonos moviles, para comparar si son iguales
-def normalize_phone(phone_number):
-    return re.sub(r'\D', '', phone_number)
+    
+#elimina los duplicados, el problema esa si el numero despues del sufijo era el mismo entonces si
+#si hay numero igual +34 y sin +34 pasaba los dos, con esta funcion elimina prejijo y compara
+def remove_duplicates(numbers):
+    unique_numbers = []
+    for num in numbers:
+        postfix = re.sub(r'[^\d]', '', num)
+        if postfix not in [re.sub(r'[^\d]', '', u) for u in unique_numbers]:
+            unique_numbers.append(num)
+    return unique_numbers    
 #funcion obtiene los tlf de la pagina web
 
 def get_tlf(url):
     try:
+        #antes llamada con urllib no request
+        #arreglar error 406
+        #arreglar error 403
         req = Request(url, headers=headers)
         html = urlopen(req)
     except (HTTPError, URLError) as e:
         print(f'Error en get_tlf: {e}')
         return None
     try:
+        phone_numbers_with_text = []
         bsObject = BeautifulSoup(html, 'html.parser')
         # Extrae el texto visible de la página web
         visible_text = bsObject.get_text()
-        # Utiliza una expresión regular para encontrar números de teléfono con o sin texto precedente,#+34 666 666 666
-        phone_numbers_with_text = re.findall(r'(\S*?):? (\+\d{1,4} \d{3} \d{3} \d{3})', visible_text)
-
-        # Busca números de teléfono dentro de enlaces (<a>) con atributo href que comienza con 'tel:'
-        phone_links = bsObject.find_all('a', href=re.compile(r'^tel:(\+\d{1,4}[\s\d]*)'))
-        phone_numbers_in_links = [re.search(r'^tel:(\+\d{1,4}[\s\d]*)', link['href']).group(1).replace(' ', '') for link in phone_links]
-
-        # Comprobar y agregar números de teléfono de enlaces a la lista si no están en la lista original
-        for phone_number in phone_numbers_in_links:
-            normalized_phone_number = normalize_phone(phone_number)
-            # Verificar si el número normalizado ya está en phone_numbers_with_text
-            if all(normalized_phone_number != normalize_phone(phone) for (_, phone) in phone_numbers_with_text):
-                # Si no está en la lista, agrégalo
-                phone_numbers_with_text.append(('', normalized_phone_number))
-
-
-        # Busca números de teléfono con diferentes formatos en el contenido HTML
-        # Busca números de teléfono con el formato "(+34) 946 41 51 19" en el contenido HTML
-        phone_numbers_in_html = re.findall(r'\(\+\d{1,4}\)\s*\d{3}\s*\d{2}\s*\d{2}\s*\d{2}', visible_text)
-        # Agrega la nueva expresión regular para buscar números con el formato "+(34) 984 086 203"
-        phone_numbers_in_html += re.findall(r'\+\(\d{2,3}\)\s*\d{3}\s*\d{3}\s*\d{3}', visible_text)
-        # Agrega la nueva expresión regular para buscar números con el formato "+33 (0)7 80 98 92 23"
-        phone_numbers_in_html += re.findall(r'\+\d{2,3}\s*\(\d\)\s*\d{1,2}[\s\d]*', visible_text)
-        # Agrega la nueva expresión regular para buscar números con el formato "657 123 123
-        phone_numbers_in_html += re.findall(r'\+\s*\d{3}\s*\d{3}\s*\d{3}', visible_text)
-        # Agrega la nueva expresión regular para buscar números con el formato "(+34) 946.855.710"
-        phone_numbers_in_html += re.findall(r'\(\+\d{2,3}\)\s*\d{3}.\d{3}.\d{3}', visible_text)
-        # Agrega la nueva expresión regular para buscar números con el formato +(34) 636957494
-        phone_numbers_in_html += re.findall(r'\+\(\d{2,3}\)\s*\d{9}', visible_text)
-        # Agrega la nueva expresión regular para buscar números con el formato href:tel943042213
-        phone_numbers_in_html += re.findall(r'tel:(\d{9})', str(bsObject))
+        # Utiliza una expresión regular para encontrar números de teléfono,+34 666 666 666
+        phone_numbers_with_text = re.findall(r'\+\d{2,3}\s\d{3}\s\d{3}\s\d{3}', visible_text)
         # Agrega la nueva expresión regular para buscar números con el formato +34 943 84 84 51
-        phone_numbers_in_html += re.findall(r'\+\d{2,3}\s\d{3}(?:\s\d{2}){2,3}', visible_text)
-        # Elimina los caracteres no deseados y almacena los números de teléfono en el formato deseado
-        formatted_phone_numbers = [re.sub(r'[^\d+]', '', phone_number) for phone_number in phone_numbers_in_html]
+        phone_numbers_with_text += re.findall(r'\+\d{1,4}\s\d{3}(?:\s\d{2}){2,3}', visible_text)
+        # Expresión regular para encontrar números de teléfono en el formato +34 946522767
+        phone_numbers_with_text += re.findall(r'\+\d{2,3} \d{9}', visible_text)
+        # Busca números de teléfono con el formato "(+34) 946 41 51 19" 
+        phone_numbers_with_text += re.findall(r'\(\+\d{1,4}\)\s*\d{3}\s*\d{2}\s*\d{2}\s*\d{2}', visible_text)
+        # Busca números de teléfono con el formato "(+34) 946 415 119" o (+34) 944.991.444
+        phone_numbers_with_text += re.findall(r'\(\+\d{2}\)\s*\d{3}(?:[\s\.]\d{3}){2}', visible_text)
+        # Busca números de teléfono con el formato (+34) 94 464 65 11 
+        phone_numbers_with_text += re.findall(r'\(\+\d{2,4}\)\s*\d{2}\s*\d{3}\s*\d{2}\s*\d{2}', visible_text)
+        # Agrega la nueva expresión regular para buscar números con el formato "+33 (0)7 80 98 92 23"
+        # phone_numbers_with_text += re.findall(r'\+\d{2,3}\s*\(\d\)\s*\d{1,2}[\s\d]*', visible_text)
+        phone_numbers_with_text += re.findall(r'\+\d{2,3}\s*\(\d\)\s*(?:\d\s*){8,}', visible_text)
+        # Agrega la nueva expresión regular para buscar números con el formato "(+34) 946.855.710"
+        phone_numbers_with_text += re.findall(r'\(\+\d{2,3}\)\s*\d{3}.\d{3}.\d{3}', visible_text)
+        #Para la expresión regular del formato "+34 91 663 28 50"
+        phone_numbers_with_text += re.findall(r'\+\d{2,2}\s\d{2}\s\d{3}\s\d{2}\s\d{2}', visible_text)
+        #La expresión regular para el formato "+972-3-509-4017
+        phone_numbers_with_text += re.findall(r'\+\d{2,3}-\d-\d{3}-\d{4}', visible_text)
+        #La expresión regular para el formato "+34 911-881-344" 
+        phone_numbers_with_text += re.findall(r'\+\d{1,4}\s\d{3}-\d{3}-\d{3}', visible_text)
+         #La expresión regular para el formato 1 (877) 889-9009 o 1 866 249-0976
+        phone_numbers_with_text += re.findall(r'1\s*(?:\(\d{3}\)|\d{3})\s*\d{3}\-(?:\s*\d{4})', visible_text)
+        #La expresión regular para el formato + 34 94 513 1372
+        phone_numbers_with_text += re.findall(r'\+\s*\d{2}\s*\d{2}\s*\d{3}\s*\d{4}', visible_text)
+        #La expresión regular para el formato +1 724 933 7700
+        phone_numbers_with_text += re.findall(r'\+\d{1,4}\s*\d{3}\s*\d{3}\s*\d{4}', visible_text)
+        #La expresión regular para el formato 34 91 806 0099
+        phone_numbers_with_text += re.findall(r'\d{2,4}\s*\d{2,3}\s*\d{3}\s*\d{4}', visible_text)
+        #la ultima de todas porque si no se duplican los números de teléfono
+        if not phone_numbers_with_text:
+            # Agrega la nueva expresión regular para buscar números con el formato "657 123 123"
+            phone_numbers_with_text += re.findall(r'\d{3} \d{3} \d{3}', visible_text)
+            # Agrega la nueva expresión regular para buscar números con el formato "657 12 31 23"
+            phone_numbers_with_text += re.findall(r'\d{3} \d{2} \d{2} \d{2}', visible_text)
+            #La expresión regular para el formato 94 495 73 11
+            phone_numbers_with_text += re.findall(r'\d{2}\s\d{3}\s\d{2}\s\d{2}', visible_text)
+            #La expresión regular para el formato 944.132.352
+            phone_numbers_with_text += re.findall(r' \d{2,3}\.\d{3}\.\d{3}', visible_text)
+        # Busca números de teléfono dentro de enlaces (<a>) con atributo href que comienza con 'tel:'
+        # Expresión regular para números de teléfono con al menos 9 dígitos
+        phone_links = bsObject.find_all('a', href=re.compile(r'^tel:(\+\d{9,}[\s\d]*)'))
+        phone_numbers_in_links = [re.search(r'^tel:(\+\d{9,}[\s\d]*)', link['href']).group(1).replace(' ', '') for link in phone_links]
+        # Formatea los números de teléfono y quita los espacios solo si son cadenas válidas
+        formatted_phone_numbers = [re.sub(r'[^\d+]', '', phone_number) if isinstance(phone_number, str) else '' for phone_number in phone_numbers_with_text]
+        # Lista para almacenar los números de teléfono únicos
+        unique_formatted_phone_numbers = []
 
-        for phone_number in formatted_phone_numbers:
-            if phone_number not in [phone for (_, phone) in phone_numbers_with_text]:
-                phone_numbers_with_text.append(('', phone_number))
-         #Encortra el número de teléfono con el formato deseado, dentro de etiqueta <p> / <p>
-        p_elements = bsObject.find_all('p')
-        for p in p_elements:
-             #+34 648 764 342
-             phone_number = re.search(r'\+\d{2,3}\s\d{3}(?:\s\d{2}){2,3}', p.text)
-             phone_number = re.search(r'\+\d{2} \d{2} \d{3} \d{2} \d{2}', p.text)
-             #+(34)945 34 34 43
-             phone_number = re.search(r'\+\(\d{2,3}\)\s*\d{3}\s*\d{2}\s*\d{2}', p.text)
-             #+xx xxx xxx xxx
-             #xxx xx xx xx
-             #xxx xx xx xx sin +
-             phone_number = re.search(r'\+\d{2,3}\s\d{3}(?:\s\d{2}){2,3}|\b\d{3} \d{2} \d{2} \d{2}\b|\b\d{3} \d{2} \d{2} \d{2}\b', p.text)
-             if phone_number:
-                 phone_numbers_with_text.append(('', phone_number.group()))
-         #Encontrar el número de teléfono con el formato deseado, dentro de etiqueta <span> / <span>
-        span_elements = bsObject.find_all('span')
-        for span in span_elements:
-             #+34 648 764 342
-             phone_number = re.search(r'\+\d{2,3}\s\d{3}\s\d{3}\s\d{3}', span.text)
-             #642 20 21 21
-             phone_number = re.search(r'\b\d{3} \d{2} \d{2} \d{2}\b', span.text)
-             phone_number = re.search(r'\+\d{2,3}\s\d{3}(?:\s\d{2}){2,3}|\b\d{3} \d{2} \d{2} \d{2}\b|\b\d{3} \d{2} \d{2} \d{2}\b', span.text)
-            
-             if phone_number:
-                phone_numbers_with_text.append(('', phone_number.group()))
-        
+        # Agrega los números de teléfono únicos a la lista
+        for phone in formatted_phone_numbers:
+            if all(phone != unique_phone for unique_phone in unique_formatted_phone_numbers) and len(unique_formatted_phone_numbers) < 4:
+                unique_formatted_phone_numbers.append(phone)
+
+        # Agrega los números de teléfono únicos de phone_numbers_in_links
+        for phone in phone_numbers_in_links:
+            if all(phone != unique_phone for unique_phone in unique_formatted_phone_numbers) and len(unique_formatted_phone_numbers) < 4:
+                unique_formatted_phone_numbers.append(phone)
+        unique_formatted_phone_numbers = remove_duplicates(unique_formatted_phone_numbers)
+        return unique_formatted_phone_numbers
     except AttributeError as e:
         return None
-
-    return phone_numbers_with_text
 
 #Obtiene el link del contacto de la pagina web por si no esta toda esa informacion en la pagina de inicio
 try:
@@ -346,42 +415,47 @@ try:
     else:
         print(f'Dirección de correo electrónico: {email}')
 
-    # Llama a la función y obtén la lista de números de teléfono y su texto precedente del inicio o de la página de contacto
+    # Llama a la función y obtén la lista de números de teléfono o de la página de contacto
 
-    phone_numbers_and_text = get_tlf(link)
-    # Imprime los números de teléfono y su texto precedente
-    if phone_numbers_and_text:
-        for item in phone_numbers_and_text:
-            text, phone_number = item
-            
-            print(f' {text} ')
-            print(f'Número de teléfono: {phone_number}')
-        if phone_number is None:
-            if contact_link is None:
+    phone_number = get_tlf(link)
+    # si en la pagina de inicio hay Imprime los números de teléfono 
+    if phone_number:
+        for phone in phone_number:
+            print(f'Número de teléfono: {phone}')
+    if not phone_number:
+        #si no hay números de teléfono, miramos contact link para llamar a la funcion para obtener los números de teléfono de la pagina de contacto
+        if contact_link is None:
+            print('No se encontraron números de teléfono en la página web.')
+        else:
+             #por si el url no es completo, se agrega el dominio a la url para obtener el correo de la pagina de contacto
+            if not contact_link.startswith('http'):
+                #nos falta una /porque no se agrega el dominio a la url asi que la añadimos
+                if not contact_link.startswith('/'):
+                    base_url = urlparse(link)
+                    complete_contact_link = f"{base_url.scheme}://{base_url.netloc}/{contact_link}"
+                    phone_number = get_tlf(complete_contact_link)
+                else:
+                    base_url = urlparse(link)
+                    complete_contact_link = f"{base_url.scheme}://{base_url.netloc}{contact_link}"
+                    phone_number = get_tlf(complete_contact_link)
+            else:
+                #la url es completa asi que llamamos directamente a la funcion para obtener  de la pagina de contacto
+                phone_number = get_tlf(contact_link)
+            if not phone_number:
                 print('No se encontraron números de teléfono en la página web.')
             else:
-                #por si el url no es completo, se agrega el dominio a la url para obtener el correo de la pagina de contacto
-                if not contact_link.startswith('http'):
-                    if not contact_link.startswith('/'):
-                        base_url = urlparse(link)
-                        complete_contact_link = f"{base_url.scheme}://{base_url.netloc}/{contact_link}"
-                        phone_number_and_text = get_tlf(complete_contact_link)
-                    else:
-                        base_url = urlparse(link)
-                        complete_contact_link = f"{base_url.scheme}://{base_url.netloc}{contact_link}"
-                        phone_number_and_text = get_tlf(complete_contact_link)
-                else:
-                    phone_number_and_text = get_tlf(contact_link)
-                if phone_numbers_and_text == None:
-                    print('No se encontraron números de teléfono en la página web.')
-                else:
-                    for item in phone_numbers_and_text:
-                        text, phone_number = item
+                for phone in phone_number:
+                    print(f'Número de teléfono: {phone}')
+    #llamada obtener los url de Linkedin y twitter para poder scrapear las dos paginas
+    social_media_urls = get_social_media(link)
 
-                        print(f' {text} ')
-                        print(f'Número de teléfono: {phone_number}')
+    if social_media_urls:
+        linkedin_url, twitter_url = social_media_urls
+        print(f'LinkedIn URL: {linkedin_url}')
+        print(f'Twitter URL: {twitter_url}')
     else:
-        print('No se encontraron números de teléfono en la página web.')
+        print('No se encontraron enlaces de LinkedIn ni de Twitter.')
+
 
 except (HTTPError) as e:
     print(f'problema pagina de contacto: {e}')

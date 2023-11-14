@@ -1,24 +1,12 @@
-from bs4 import BeautifulSoup
-import requests
+from bs4 import BeautifulSoup as bs
+import requests 
 import json
 import datetime
 from urllib.request import urlopen, Request
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlparse, parse_qs
 from langdetect import detect
-#no es capaz de funcionar, creo que porque los buscadores lo tienen bastante parcheao
-from selenium import webdriver
-from selenium.webdriver.common.keys import Keys
-from selenium.webdriver.chrome.service import Service
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-from selenium.common.exceptions import ElementNotInteractableException
-from bs4 import BeautifulSoup
-from selenium.webdriver.common.action_chains import ActionChains
-from selenium.webdriver.chrome.options import Options
-import time
-import getpass as gp
+
 import re
 headers = {
 
@@ -28,13 +16,10 @@ headers = {
     'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/117.0.5938.150Safari/537.36',
     # Add more headers as needed
 }
-
-
 empresa = input("empresa: ")
 html = requests.get('https://www.google.com/search?q={empresa}'.format(empresa=empresa),
                     headers=headers).text
-
-soup = BeautifulSoup(html, 'lxml')
+soup = bs(html, 'lxml')
 
 # Encuentra todos los contenedores de resultados de búsqueda
 containers = soup.findAll('div', class_='yuRUbf')
@@ -56,7 +41,7 @@ for container in containers:
     a = container.find('a')
     if a:
           link = a['href']
-
+    prueba =div_summary.find('span') 
     article_summary = None
     if div_summary is not None:
         if div_summary.find('span') is not None:
@@ -78,11 +63,11 @@ for container in containers:
     #imprimir datos basicos, antes de la pagina web, en el buscador de web de google
     if heading and link:
         print("")
-        print(f'Heading: {heading}')
+        #print(f'Heading: {heading}')
         print(f'Link: {link}')
         print(f'Summary: {article_summary}')
         #print(f'icon image: {icon}')
-        print(f'start date: {date_today}')
+        #print(f'start date: {date_today}')
         break  # Detenerse después de encontrar el primer resultado válido
 
 if not heading or not link:
@@ -95,7 +80,7 @@ def get_social_media(url):
         print(f'Error en get_social_media: {e}')
         return None
 
-    bsObject = BeautifulSoup(html, 'html.parser')
+    bsObject = bs(html, 'html.parser')
 
     # Encuentra la etiqueta <a> con enlaces de LinkedIn (insensible a mayúsculas y minúsculas)
     linkedin_tag = bsObject.find('a', href=re.compile(r'linkedin', re.I))
@@ -137,7 +122,7 @@ def get_social_media(url):
         else:
             twitter_url = None
     return linkedin_url, twitter_url
-    #llamada obtener los url de Linkedin y twitter para poder scrapear las dos paginas
+
 social_media_urls = get_social_media(link)
 
 if social_media_urls:
@@ -146,19 +131,3 @@ if social_media_urls:
     print(f'Twitter URL: {twitter_url}')
 else:
     print('No se encontraron enlaces de LinkedIn ni de Twitter.')
-
-
-################################################# PARTE SELENIUM #################################################
-# Especifica la ubicación del controlador de Chrome como una opción
-chrome_options = webdriver.ChromeOptions()
-chrome_options.add_argument("--headless")
-chrome_options.add_argument("webdriver.chrome.driver=/usr/local/bin/chromedriver")
-
-# Crea el controlador de Chrome con las opciones
-driver = webdriver.Chrome(options=chrome_options)
-# # Navega a la página de inicio de sesión de Twitter de cada empresa
-driver.get(twitter_url)
-username = WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.XPATH, '/html/body/div[1]/div/div/div[2]/main/div/div/div/div[1]/div/div[3]/div/div/div/div/div[2]/div[1]/div/div[2]/div/div/div/span')))
-title = WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.XPATH, '/html/body/div[1]/div/div/div[2]/main/div/div/div/div[1]/div/div[3]/div/div/div/div/div[2]/div[1]/div/div[1]/div/div/span/span[1]')))
-print(username.text)
-print(title.text)

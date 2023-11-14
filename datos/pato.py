@@ -194,12 +194,7 @@ def get_tlf(url):
             if all(phone != unique_phone for unique_phone in unique_formatted_phone_numbers) and len(unique_formatted_phone_numbers) < 4:
                 unique_formatted_phone_numbers.append(phone)
         
-        print(f'phone_numbers_with_text: {phone_numbers_with_text}')
-        print(f'phone_links: {phone_numbers_in_links}')
-        print(f'formatted_phone_numbers: {formatted_phone_numbers}')
-        print(f'unique_formatted_phone_numbers: {unique_formatted_phone_numbers}')
         unique_formatted_phone_numbers = remove_duplicates(unique_formatted_phone_numbers)
-        print(f'unique_formatted_phone_numbers: {unique_formatted_phone_numbers}')
         return unique_formatted_phone_numbers
     except AttributeError as e:
         return None
