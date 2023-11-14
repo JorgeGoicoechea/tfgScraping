@@ -39,6 +39,8 @@ containers = soup.findAll('div', class_='yuRUbf')
 div_summary = soup.find('div', class_='VwiC3b yXK7lf lyLwlc yDYNvb W8l4ac lEBKkf')
 if div_summary is None:
      div_summary = soup.find('div', class_='VwiC3b yXK7lf lyLwlc yDYNvb W8l4ac')
+
+# Imprimir el resultado
 date_today = datetime.datetime.now().strftime("%d-%m-%Y")
 
 #recorrer el contendor de la primera pagina que aparece en el buscador
@@ -59,6 +61,9 @@ for container in containers:
              article_summary = div_summary.find('span').text
         else:
              article_summary = div_summary.text
+             #cuando lo que detecta es la fecha antes del div, la quitamos para obtener el texto restante
+             if len(article_summary) < 20:
+                    article_summary = div_summary.get_text().split('—', 1)[-1].strip()
 
     icon = None
     img = container.find('img', class_='XNo5Ab')
@@ -91,6 +96,7 @@ def get_contact_link(url):
         bsObject = BeautifulSoup(html, 'html.parser')
         # Encuentra el primer enlace que contiene la palabra "contacto" en su URL
         contact_link = bsObject.find('a', href=re.compile(r'contact'))
+        href_value = None
         # Verifica si se encontró un enlace
         if contact_link:
             href_value = contact_link.get('href')  # Obtiene el valor del atributo href
@@ -135,12 +141,14 @@ def get_idiomas(url):
             hreflang_value = tag['hreflang']
             if len(hreflang_value) <= 4:
                 idiomas.append(hreflang_value)
-    if a_lang_tags:
-        # Itera sobre las etiquetas <a> y obtén los valores del atributo 'lang'
-        for tag in a_lang_tags:
-            lang_value = tag.get('lang')
-            if lang_value:
-                idiomas.append(lang_value)
+    #mirar todos lo <a lang>
+    else:
+        if a_lang_tags:
+            # Itera sobre las etiquetas <a> y obtén los valores del atributo 'lang'
+            for tag in a_lang_tags:
+                lang_value = tag.get('lang')
+                if lang_value:
+                    idiomas.append(lang_value)
     if not idiomas:
             # Si no se encuentran idiomas en los enlaces, intenta buscar en el atributo 'lang' de la etiqueta 'html'
             html_tag = bsObject.find('html')
@@ -150,15 +158,19 @@ def get_idiomas(url):
 
                 if html_lang:
                     idiomas.append(html_lang)
-                else:
-                    # Si no se encuentra un idioma en 'html' ni en los enlaces, detectar idioma de la pagina web
-                     detected_lang = detect(bsObject.get_text())
-                     idiomas.append(detected_lang)
             else:
                 # Si no se encuentra un idioma en 'html' ni en los enlaces, detectar idioma de la pagina web
                      detected_lang = detect(bsObject.get_text())
                      idiomas.append(detected_lang)
     return idiomas
+#devuelve el correo que esta protegido por cifrado de cloudfare google
+def deCFEmail(fp):
+    try:
+        r = int(fp[:2],16)
+        email = ''.join([chr(int(fp[i:i+2], 16) ^ r) for i in range(2, len(fp), 2)])
+        return email
+    except (ValueError):
+        pass
 
 #funcion obtiene los emails de la pagina web
 def get_email(url):
@@ -171,26 +183,43 @@ def get_email(url):
     try:
         bsObj = BeautifulSoup(html, 'html.parser')
         # Utiliza expresión regular para obtener correos de enlaces 'mailto:'
-        email_links = bsObj.find_all('a', href=re.compile(r'^mailto:([A-Za-z0-9\._+]+@[A-Za-z-z0-9]+\.[A-Za-z]{1,4}$)', re.I))
-        
-
-        
-        # Si se encuentran correos electrónicos en enlaces 'mailto:', devuelve el primero
+        email_links = bsObj.find('a', href=re.compile(r'^mailto:\b[\w\.-]+@[\w\.-]+\.\w{1,4}\b', re.I))
+        fp = None
         if email_links:
-            return email_links[0]['href'].replace('mailto:', '')
-        
-        # Si no se encuentran correos en enlaces 'mailto:', busca correos escritos en el contenido HTML
-        email_in_text = re.findall(r'\b[\w\.-]+@[\w\.-]+\.\w{1,4}\b', bsObj.get_text())
-        
-        # Si se encuentran correos en el texto, devuelve el primero
+            email_links = email_links.get('href').replace('mailto:', '')
+            return email_links
+        # Si no se encuentran correos en enlaces 'mailto:', busca correos escritos en el contenido visible de la página web,aunque muchas veces no se puede porque esta protegido
+        visible_text = bsObj.get_text()
+        email_in_text = re.findall(r'\b[\w\.-]+@[\w\.-]+\.\w{1,4}\b', visible_text)
+        # Si se encuentran correos en el texto, devuelve el primero, 
         if email_in_text:
             return email_in_text[0]
-
+        #decodificar CloudFare anti scraping protection de email para correo que son visibles en la pagina web <span><a class="__cf_email__" data-cfemail="11787f777e517e62707f74727e7f62647d65787f763f727e7c" href="/cdn-cgi/l/email-protection">[email protected]</a></span>
+        # Encontrar el elemento <a> con la clase '__cf_email__'
+        a_tag = bsObj.find('a', class_='__cf_email__')
+        # Obtener el valor del atributo 'data-cfemail'
+        if a_tag:
+            fp = a_tag['data-cfemail']
+        # devolver valor email decodificado que esta en la etiqueta fp
+        if fp:
+            email_in_text = deCFEmail(fp)
+            return email_in_text
+           # Convertir el HTML completo en una cadena de texto
+        # html_text = str(bsObj)
+        # # Crear una expresión regular que coincida con correos electrónicos
+        # email_pattern = re.compile(r'\b[\w\.-]+@[\w\.-]+\.\w{2,3}\b')
+        # # Buscar correos electrónicos que coincidan con el patrón en el HTML
+        # found_emails = re.findall(email_pattern, html_text)
+        # if found_emails:
+        #     return found_emails
         # Si no se encuentra ningún correo, devuelve None
         return None
     except AttributeError as e:
         return None
 
+#funcion normalizar telefonos moviles, para comparar si son iguales
+def normalize_phone(phone_number):
+    return re.sub(r'\D', '', phone_number)
 #funcion obtiene los tlf de la pagina web
 
 def get_tlf(url):
@@ -204,17 +233,21 @@ def get_tlf(url):
         bsObject = BeautifulSoup(html, 'html.parser')
         # Extrae el texto visible de la página web
         visible_text = bsObject.get_text()
-        # Utiliza una expresión regular para encontrar números de teléfono con o sin texto precedente
-        phone_numbers_with_text = re.findall(r'(\S*?):? (\+\d{1,4} \d{3} \d{3} \d{3})', visible_text) 
+        # Utiliza una expresión regular para encontrar números de teléfono con o sin texto precedente,#+34 666 666 666
+        phone_numbers_with_text = re.findall(r'(\S*?):? (\+\d{1,4} \d{3} \d{3} \d{3})', visible_text)
 
         # Busca números de teléfono dentro de enlaces (<a>) con atributo href que comienza con 'tel:'
         phone_links = bsObject.find_all('a', href=re.compile(r'^tel:(\+\d{1,4}[\s\d]*)'))
         phone_numbers_in_links = [re.search(r'^tel:(\+\d{1,4}[\s\d]*)', link['href']).group(1).replace(' ', '') for link in phone_links]
 
-        # Agrega números de teléfono de enlaces a la lista si no están en la lista original
+        # Comprobar y agregar números de teléfono de enlaces a la lista si no están en la lista original
         for phone_number in phone_numbers_in_links:
-            if phone_number not in [phone for (_, phone) in phone_numbers_with_text]:
-                phone_numbers_with_text.append(('', phone_number))
+            normalized_phone_number = normalize_phone(phone_number)
+            # Verificar si el número normalizado ya está en phone_numbers_with_text
+            if all(normalized_phone_number != normalize_phone(phone) for (_, phone) in phone_numbers_with_text):
+                # Si no está en la lista, agrégalo
+                phone_numbers_with_text.append(('', normalized_phone_number))
+
 
         # Busca números de teléfono con diferentes formatos en el contenido HTML
         # Busca números de teléfono con el formato "(+34) 946 41 51 19" en el contenido HTML
@@ -239,30 +272,30 @@ def get_tlf(url):
         for phone_number in formatted_phone_numbers:
             if phone_number not in [phone for (_, phone) in phone_numbers_with_text]:
                 phone_numbers_with_text.append(('', phone_number))
-        #Encortra el número de teléfono con el formato deseado, dentro de etiqueta <p> / <p>
+         #Encortra el número de teléfono con el formato deseado, dentro de etiqueta <p> / <p>
         p_elements = bsObject.find_all('p')
         for p in p_elements:
-            #+34 648 764 342
-            phone_number = re.search(r'\+\d{2,3}\s\d{3}(?:\s\d{2}){2,3}', p.text)
-            phone_number = re.search(r'\+\d{2} \d{2} \d{3} \d{2} \d{2}', p.text)
-            #+(34)945 34 34 43
-            phone_number = re.search(r'\+\(\d{2,3}\)\s*\d{3}\s*\d{2}\s*\d{2}', p.text)
-            #+xx xxx xxx xxx
-            #xxx xx xx xx
-            #xxx xx xx xx sin +
-            phone_number = re.search(r'\+\d{2,3}\s\d{3}(?:\s\d{2}){2,3}|\b\d{3} \d{2} \d{2} \d{2}\b|\b\d{3} \d{2} \d{2} \d{2}\b', p.text)
-            if phone_number:
-                phone_numbers_with_text.append(('', phone_number.group()))
-        #Encontrar el número de teléfono con el formato deseado, dentro de etiqueta <span> / <span>
+             #+34 648 764 342
+             phone_number = re.search(r'\+\d{2,3}\s\d{3}(?:\s\d{2}){2,3}', p.text)
+             phone_number = re.search(r'\+\d{2} \d{2} \d{3} \d{2} \d{2}', p.text)
+             #+(34)945 34 34 43
+             phone_number = re.search(r'\+\(\d{2,3}\)\s*\d{3}\s*\d{2}\s*\d{2}', p.text)
+             #+xx xxx xxx xxx
+             #xxx xx xx xx
+             #xxx xx xx xx sin +
+             phone_number = re.search(r'\+\d{2,3}\s\d{3}(?:\s\d{2}){2,3}|\b\d{3} \d{2} \d{2} \d{2}\b|\b\d{3} \d{2} \d{2} \d{2}\b', p.text)
+             if phone_number:
+                 phone_numbers_with_text.append(('', phone_number.group()))
+         #Encontrar el número de teléfono con el formato deseado, dentro de etiqueta <span> / <span>
         span_elements = bsObject.find_all('span')
         for span in span_elements:
-            #+34 648 764 342
-            phone_number = re.search(r'\+\d{2,3}\s\d{3}\s\d{3}\s\d{3}', span.text)
-            #642 20 21 21
-            phone_number = re.search(r'\b\d{3} \d{2} \d{2} \d{2}\b', span.text)
-            phone_number = re.search(r'\+\d{2,3}\s\d{3}(?:\s\d{2}){2,3}|\b\d{3} \d{2} \d{2} \d{2}\b|\b\d{3} \d{2} \d{2} \d{2}\b', span.text)
+             #+34 648 764 342
+             phone_number = re.search(r'\+\d{2,3}\s\d{3}\s\d{3}\s\d{3}', span.text)
+             #642 20 21 21
+             phone_number = re.search(r'\b\d{3} \d{2} \d{2} \d{2}\b', span.text)
+             phone_number = re.search(r'\+\d{2,3}\s\d{3}(?:\s\d{2}){2,3}|\b\d{3} \d{2} \d{2} \d{2}\b|\b\d{3} \d{2} \d{2} \d{2}\b', span.text)
             
-            if phone_number:
+             if phone_number:
                 phone_numbers_with_text.append(('', phone_number.group()))
         
     except AttributeError as e:
